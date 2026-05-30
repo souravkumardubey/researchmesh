@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 from tavily import TavilyClient
 from langchain.tools import tool
 from dotenv import load_dotenv
-from rich import print
 
 import urllib3
 warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
@@ -52,6 +51,3 @@ def web_scrape(url: str) -> str:
         return text[:3000] if text else "No content found"
     except Exception as e:
         return f"Error scraping {url}: {e}"
-
-# print(web_search.invoke("recipe for gobi manchurian"))
-print(web_scrape.invoke("https://resumeworded.com/resume-scanner"))
