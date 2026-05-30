@@ -1,4 +1,6 @@
 import os
+import time
+import random
 import warnings
 import requests
 from bs4 import BeautifulSoup
@@ -37,17 +39,26 @@ def web_search(query: str) -> str:
 
 @tool("web_scrape", return_direct=True)
 def web_scrape(url: str) -> str:
-    """Scrape the content of a web page. Returns the main text content."""
-    try:
-        response = session.get(url, timeout=10, headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        })
-        soup = BeautifulSoup(response.text, 'html.parser')
-        for tag in soup(["script", "style", "nav", "aside", "footer"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
-        return text[:3000] if text else "No content found"
-    except Exception as e:
-        return f"Error scraping {url}: {e}"
+    """Scrape the content of a web page. Returns the main text content. Retries up to 2 times on failure."""
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = session.get(url, timeout=10, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+            })
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for tag in soup(["script", "style", "nav", "aside", "footer"]):
+                tag.decompose()
+            text = soup.get_text(separator="\n", strip=True)
+            return text[:3000] if text else "No content found"
+        except requests.exceptions.ConnectionError as e:
+            if attempt < max_attempts:
+                delay = 2 ** attempt + random.uniform(0, 0.5)
+                time.sleep(delay)
+                continue
+            return f"Error scraping {url} (after {max_attempts} attempts): {e}"
+        except Exception as e:
+            return f"Error scraping {url}: {e}"
+    return f"Error scraping {url}: max retries exceeded"
