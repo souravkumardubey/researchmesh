@@ -46,7 +46,7 @@ def web_scrape(url: str) -> str:
             "Accept-Language": "en-US,en;q=0.5",
         })
         soup = BeautifulSoup(response.text, 'html.parser')
-        for tag in soup(["script", "style", "header", "footer", "nav", "textarea", "p", "a"]):
+        for tag in soup(["script", "style", "nav", "aside", "footer"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
         return text[:3000] if text else "No content found"
