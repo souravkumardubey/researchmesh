@@ -1,20 +1,15 @@
 import os
 import time
 import random
-import warnings
 import requests
 from bs4 import BeautifulSoup
 from tavily import TavilyClient
 from langchain.tools import tool
 from dotenv import load_dotenv
 
-import urllib3
-warnings.filterwarnings("ignore", category=urllib3.exceptions.InsecureRequestWarning)
-
 load_dotenv()
 
 session = requests.Session()
-session.verify = False
 
 tavily_api_key = os.getenv("TAVILY_API_KEY")
 mistral_api_key = os.getenv("MISTRAL_API_KEY")
