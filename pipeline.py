@@ -1,6 +1,7 @@
 import time
 import random
 from functools import wraps
+from typing import Callable, Optional
 from agents import build_search_agent, build_read_agent, writer_chain, critic_chain
 from rich import print
 
@@ -17,7 +18,7 @@ def retry(max_attempts=3, base_delay=1.0, backoff=2.0, exceptions=(Exception,)):
                     last_exception = e
                     if attempt < max_attempts:
                         delay = base_delay * (backoff ** (attempt - 1)) + random.uniform(0, 0.5)
-                        print(f"[bold yellow]⚠ Attempt {attempt}/{max_attempts} failed: {e}[/bold yellow]")
+                        print(f"[bold yellow]Attempt {attempt}/{max_attempts} failed: {e}[/bold yellow]")
                         print(f"[dim]Retrying in {delay:.1f}s...[/dim]")
                         time.sleep(delay)
             raise last_exception
@@ -25,15 +26,43 @@ def retry(max_attempts=3, base_delay=1.0, backoff=2.0, exceptions=(Exception,)):
     return decorator
 
 
-def run_research_pipeline(query: str) -> dict:
+Callback = Optional[Callable[[str], None]]
+StepCallback = Optional[Callable[[str, str], None]]
+
+
+def run_research_pipeline(
+    query: str,
+    on_step_start: Callback = None,
+    on_step_complete: StepCallback = None,
+    on_error: StepCallback = None,
+) -> dict:
+    use_prints = on_step_start is None  # only print when running standalone
     state = {}
+
+    def _print(*args, **kwargs):
+        if use_prints:
+            print(*args, **kwargs)
+
+    def _notify_step_start(name: str):
+        if on_step_start:
+            on_step_start(name)
+
+    def _notify_step_complete(name: str, result: str):
+        if on_step_complete:
+            on_step_complete(name, result)
+
+    def _notify_error(name: str, error: str):
+        if on_error:
+            on_error(name, error)
 
     _retry = retry(max_attempts=3, base_delay=2.0)
 
     # Step 1: Search Agent
-    print("\n" + "=" * 50 + "\n")
-    print("[bold blue]Step 1: Search Agent[/bold blue]")
-    print("\n" + "=" * 50 + "\n")
+    _print()
+    _print("=" * 50)
+    _print("[bold blue]Step 1: Search Agent[/bold blue]")
+    _print("=" * 50)
+    _notify_step_start("search")
     try:
         search_agent = build_search_agent()
         invoke_search = _retry(search_agent.invoke)
@@ -43,17 +72,21 @@ def run_research_pipeline(query: str) -> dict:
             ]
         })
         state["search_results"] = search_results["messages"][-1].content
-        print("[bold green]Search Results:[/bold green]")
-        print(state["search_results"])
+        _notify_step_complete("search", state["search_results"])
+        _print("[bold green]Search Results:[/bold green]")
+        _print(state["search_results"])
     except Exception as e:
-        print(f"[bold red]✗ Search Agent failed after 3 attempts: {e}[/bold red]")
+        _notify_error("search", str(e))
+        _print(f"[bold red]Search Agent failed after 3 attempts: {e}[/bold red]")
         state["search_results"] = f"No search results available due to: {e}"
         return state
 
     # Step 2: Read Agent
-    print("\n" + "=" * 50 + "\n")
-    print("[bold blue]Step 2: Read Agent is scraping content....[/bold blue]")
-    print("\n" + "=" * 50 + "\n")
+    _print()
+    _print("=" * 50)
+    _print("[bold blue]Step 2: Read Agent is scraping content....[/bold blue]")
+    _print("=" * 50)
+    _notify_step_start("reader")
     try:
         read_agent = build_read_agent()
         invoke_read = _retry(read_agent.invoke)
@@ -65,17 +98,21 @@ def run_research_pipeline(query: str) -> dict:
         })
         raw = read_results["messages"][-1].content
         state["scraped_results"] = raw.split("\n\n") if raw else []
-        print("[bold green]Content Summaries:[/bold green]")
+        _notify_step_complete("reader", raw)
+        _print("[bold green]Content Summaries:[/bold green]")
         for idx, summary in enumerate(state["scraped_results"], 1):
-            print(f"[bold yellow]Summary {idx}:[/bold yellow]\n{summary}\n")
+            _print(f"[bold yellow]Summary {idx}:[/bold yellow]\n{summary}\n")
     except Exception as e:
-        print(f"[bold red]✗ Read Agent failed after 3 attempts: {e}[/bold red]")
+        _notify_error("reader", str(e))
+        _print(f"[bold red]Read Agent failed after 3 attempts: {e}[/bold red]")
         state["scraped_results"] = []
 
     # Step 3: Write Agent
-    print("\n" + "=" * 50 + "\n")
-    print("[bold blue]Step 3: Write Agent is generating report....[/bold blue]")
-    print("\n" + "=" * 50 + "\n")
+    _print()
+    _print("=" * 50)
+    _print("[bold blue]Step 3: Write Agent is generating report....[/bold blue]")
+    _print("=" * 50)
+    _notify_step_start("writer")
     try:
         research_combined = (
             f"Topic: {query}\n\n"
@@ -85,25 +122,31 @@ def run_research_pipeline(query: str) -> dict:
         invoke_write = _retry(writer_chain.invoke)
         report = invoke_write({"topic": query, "research": research_combined})
         state["report"] = report
-        print("[bold green]Generated Report:[/bold green]")
-        print(state["report"])
+        _notify_step_complete("writer", report)
+        _print("[bold green]Generated Report:[/bold green]")
+        _print(state["report"])
     except Exception as e:
-        print(f"[bold red]✗ Write Agent failed after 3 attempts: {e}[/bold red]")
+        _notify_error("writer", str(e))
+        _print(f"[bold red]Write Agent failed after 3 attempts: {e}[/bold red]")
         state["report"] = f"Report generation failed due to: {e}"
         return state
 
     # Step 4: Critic Agent
-    print("\n" + "=" * 50 + "\n")
-    print("[bold blue]Step 4: Critic Agent is reviewing the report.... [/bold blue]")
-    print("\n" + "=" * 50 + "\n")
+    _print()
+    _print("=" * 50)
+    _print("[bold blue]Step 4: Critic Agent is reviewing the report.... [/bold blue]")
+    _print("=" * 50)
+    _notify_step_start("critic")
     try:
         invoke_critic = _retry(critic_chain.invoke)
         critique = invoke_critic({"report": state["report"]})
         state["critique"] = critique
-        print("[bold green]Critique:[/bold green]")
-        print(state["critique"])
+        _notify_step_complete("critic", critique)
+        _print("[bold green]Critique:[/bold green]")
+        _print(state["critique"])
     except Exception as e:
-        print(f"[bold red]✗ Critic Agent failed after 3 attempts: {e}[/bold red]")
+        _notify_error("critic", str(e))
+        _print(f"[bold red]Critic Agent failed after 3 attempts: {e}[/bold red]")
         state["critique"] = f"Critique generation failed due to: {e}"
 
     return state
