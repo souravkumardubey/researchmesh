@@ -1,4 +1,6 @@
 import os
+import ssl
+import httpx
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_mistralai import ChatMistralAI
@@ -8,11 +10,26 @@ from tools import web_search, web_scrape
 
 load_dotenv()
 
+insecure_ctx = ssl.create_default_context()
+insecure_ctx.check_hostname = False
+insecure_ctx.verify_mode = ssl.CERT_NONE
+
 api_key = os.getenv("MISTRAL_API_KEY")
+httpx_client = httpx.Client(
+    base_url="https://api.mistral.ai/v1",
+    headers={
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    },
+    verify=insecure_ctx,
+    timeout=120,
+)
 
 llm = ChatMistralAI(
     model="mistral-small-latest",
     api_key=api_key,
+    client=httpx_client,
 )
 
 def build_search_agent():
