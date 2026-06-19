@@ -1,0 +1,16 @@
+[project]
+name = "researchmesh"
+version = "0.1.0"
+description = "Multi-Agent AI Research System"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+researchmesh = "cli:app"
+
+[tool.setuptools]
+py-modules = ["cli", "tui", "config", "pipeline", "agents", "tools", "app"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
